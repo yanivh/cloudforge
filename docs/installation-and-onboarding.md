@@ -138,6 +138,33 @@ Expected success message includes:
 
 - `Dev environment is running.`
 - `GPU status: skipped (USE_GPU=false)`
+- Detectron2 installed in the default venv (CPU wheels when `USE_GPU=false`)
+
+Verify inside the container:
+
+```bash
+python -c "import torch, detectron2, cv2, rasterio; print(torch.__version__, detectron2.__version__)"
+```
+
+### Parent vs project venv (ML vs web stack)
+
+- **Parent venv** (`/data/home/.venv`): torch 2.5.1, torchvision 0.20.1, detectron2 0.6, opencv, rasterio, etc. (installed by `init-venv.sh`)
+- **Project venv** (e.g. `00_GUI/.venv`): FastAPI, uvicorn, SQLAlchemy, rio-tiler, etc. — do **not** duplicate ML deps there
+
+Link parent ML packages into a project venv:
+
+```bash
+cd ~/cloudforge
+bash scripts/link-shared-ml-venv.sh /data/projects/<repo>/00_GUI/.venv
+pip install -r /data/projects/<repo>/00_GUI/requirements.txt
+```
+
+If upgrading from an older parent venv (torch 2.1), reset once:
+
+```bash
+rm -rf /data/home/.venv
+bash start-dev.sh
+```
 
 ### 6) Daily lifecycle commands
 

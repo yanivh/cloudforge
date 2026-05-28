@@ -76,13 +76,8 @@ fi
 
 # ── Default venv init (idempotent) ───────────────────────────────────────────
 
-echo "==> Checking default Python venv"
-if docker compose exec -T devenv test -f /root/.venv/bin/activate 2>/dev/null; then
-    echo "    Venv exists — skipping init"
-else
-    echo "    First-time setup: creating venv and installing PyTorch (may take several minutes)"
-    docker compose exec -T devenv bash -s < init-venv.sh
-fi
+echo "==> Ensuring default Python venv (PyTorch, Detectron2, base ML tools)"
+docker compose exec -T -e USE_GPU="$USE_GPU" -e CLOUDFORGE_DIR=/opt/cloudforge devenv bash -s < init-venv.sh
 
 # ── Git setup (idempotent) ────────────────────────────────────────────────────
 
