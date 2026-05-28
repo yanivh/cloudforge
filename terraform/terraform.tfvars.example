@@ -1,6 +1,6 @@
 env_name         = "default"
 region           = "us-east-1"
-instance_type    = "g4dn.xlarge"
+instance_type    = "t3.large"
 key_name         = "my-ec2-key"        # name of your key pair in AWS (without .pem)
 data_volume_size = 200                  # GB
 use_spot         = true                 # ~70% cheaper; set false for on-demand

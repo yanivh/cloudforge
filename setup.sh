@@ -17,20 +17,25 @@ sudo usermod -aG docker "$USER"
 echo "==> Installing Docker Compose plugin"
 sudo apt-get install -y docker-compose-plugin
 
-# ── NVIDIA Container Toolkit ─────────────────────────────────────────────────
+# ── NVIDIA Container Toolkit (optional) ──────────────────────────────────────
 
-echo "==> Installing NVIDIA Container Toolkit"
-curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey \
-    | sudo gpg --dearmor -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg
+USE_GPU="${USE_GPU:-false}"
+if [ "$USE_GPU" = "true" ]; then
+    echo "==> Installing NVIDIA Container Toolkit"
+    curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey \
+        | sudo gpg --dearmor -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg
 
-curl -s -L https://nvidia.github.io/libnvidia-container/stable/deb/nvidia-container-toolkit.list \
-    | sed 's#deb https://#deb [signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg] https://#g' \
-    | sudo tee /etc/apt/sources.list.d/nvidia-container-toolkit.list
+    curl -s -L https://nvidia.github.io/libnvidia-container/stable/deb/nvidia-container-toolkit.list \
+        | sed 's#deb https://#deb [signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg] https://#g' \
+        | sudo tee /etc/apt/sources.list.d/nvidia-container-toolkit.list
 
-sudo apt-get update
-sudo apt-get install -y nvidia-container-toolkit
-sudo nvidia-ctk runtime configure --runtime=docker
-sudo systemctl restart docker
+    sudo apt-get update
+    sudo apt-get install -y nvidia-container-toolkit
+    sudo nvidia-ctk runtime configure --runtime=docker
+    sudo systemctl restart docker
+else
+    echo "==> Skipping NVIDIA Container Toolkit (USE_GPU=false)"
+fi
 
 # ── EBS Volume ───────────────────────────────────────────────────────────────
 
@@ -81,6 +86,9 @@ ENV_NAME=default
 
 # Anthropic API key — leave empty to use 'claude login' (Claude.ai subscription)
 ANTHROPIC_API_KEY=
+
+# Enable GPU-specific startup checks/tooling
+USE_GPU=false
 
 # Git identity (required — must not be placeholders)
 GIT_NAME=Your Name

@@ -50,23 +50,28 @@ if [ ${#ERRORS[@]} -gt 0 ]; then
 fi
 
 CONTAINER="${ENV_NAME:-devenv}"
+USE_GPU="${USE_GPU:-false}"
 
 # ── Start environment ─────────────────────────────────────────────────────────
 
 echo "==> Starting dev environment (container: $CONTAINER)"
 docker compose up -d --build
 
-# ── GPU check (hard fail) ─────────────────────────────────────────────────────
+# ── GPU check (optional) ──────────────────────────────────────────────────────
 
-echo "==> Verifying GPU access"
-if ! docker compose exec -T devenv nvidia-smi --query-gpu=name,memory.total,driver_version --format=csv,noheader 2>/dev/null; then
-    echo "ERROR: GPU not accessible inside the container."
-    echo "       Check that the NVIDIA Container Toolkit is installed and configured:"
-    echo "         sudo nvidia-ctk runtime configure --runtime=docker"
-    echo "         sudo systemctl restart docker"
-    echo "       Then re-run this script."
-    docker compose down
-    exit 1
+if [ "$USE_GPU" = "true" ]; then
+    echo "==> Verifying GPU access"
+    if ! docker compose exec -T devenv nvidia-smi --query-gpu=name,memory.total,driver_version --format=csv,noheader 2>/dev/null; then
+        echo "ERROR: GPU not accessible inside the container."
+        echo "       Check that the NVIDIA Container Toolkit is installed and configured:"
+        echo "         sudo nvidia-ctk runtime configure --runtime=docker"
+        echo "         sudo systemctl restart docker"
+        echo "       Then re-run this script."
+        docker compose down
+        exit 1
+    fi
+else
+    echo "==> USE_GPU=false: skipping GPU verification"
 fi
 
 # ── Default venv init (idempotent) ───────────────────────────────────────────
@@ -103,6 +108,10 @@ echo ""
 echo "Or attach via VS Code Dev Containers:"
 echo "  Command Palette → 'Dev Containers: Attach to Running Container' → $CONTAINER"
 echo ""
-echo "GPU status:"
-docker compose exec -T devenv nvidia-smi --query-gpu=name,memory.total,driver_version --format=csv,noheader 2>/dev/null \
-    | sed 's/^/  /'
+if [ "$USE_GPU" = "true" ]; then
+    echo "GPU status:"
+    docker compose exec -T devenv nvidia-smi --query-gpu=name,memory.total,driver_version --format=csv,noheader 2>/dev/null \
+        | sed 's/^/  /'
+else
+    echo "GPU status: skipped (USE_GPU=false)"
+fi

@@ -16,10 +16,3 @@ services:
     stdin_open: true
     tty: true
     command: sleep infinity
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: all
-              capabilities: [gpu]
