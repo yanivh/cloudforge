@@ -3,6 +3,8 @@
 # Target OS: Ubuntu 22.04
 set -euo pipefail
 
+REPO_DIR="$(cd "$(dirname "$0")" && pwd)"
+
 echo "==> Updating system packages"
 sudo apt-get update && sudo apt-get upgrade -y
 
@@ -64,13 +66,75 @@ echo "==> Creating /data directory structure"
 sudo mkdir -p /data/projects /data/models /data/home
 sudo chown -R "$USER:$USER" /data
 
+# ── /etc/cloudforge ───────────────────────────────────────────────────────────
+
+echo "==> Creating /etc/cloudforge"
+sudo mkdir -p /etc/cloudforge
+
+echo "==> Writing /etc/cloudforge/devenv.env.example"
+sudo tee /etc/cloudforge/devenv.env.example > /dev/null << 'ENVEOF'
+# Cloudforge environment configuration
+# This file is the canonical runtime config source for start-dev.sh and the systemd service.
+
+# Environment name — used for Docker container naming
+ENV_NAME=default
+
+# Anthropic API key — leave empty to use 'claude login' (Claude.ai subscription)
+ANTHROPIC_API_KEY=
+
+# Git identity (required — must not be placeholders)
+GIT_NAME=Your Name
+GIT_EMAIL=you@example.com
+
+# AWS region (used by suspend.sh and resume.sh run from your laptop)
+AWS_REGION=us-east-1
+ENVEOF
+
+if [ ! -f /etc/cloudforge/devenv.env ]; then
+    echo "==> Bootstrapping /etc/cloudforge/devenv.env from example"
+    sudo cp /etc/cloudforge/devenv.env.example /etc/cloudforge/devenv.env
+    sudo chown "$USER:$USER" /etc/cloudforge/devenv.env
+    echo ""
+    echo "IMPORTANT: Edit /etc/cloudforge/devenv.env and set your real values:"
+    echo "  sudo -e /etc/cloudforge/devenv.env"
+    echo ""
+else
+    echo "    /etc/cloudforge/devenv.env already exists — skipping bootstrap"
+fi
+
+# ── Systemd service ───────────────────────────────────────────────────────────
+
+echo "==> Installing cloudforge-devenv.service"
+sudo tee /etc/systemd/system/cloudforge-devenv.service > /dev/null << UNITEOF
+[Unit]
+Description=Cloudforge dev environment
+After=docker.service network-online.target
+Requires=docker.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+WorkingDirectory=${REPO_DIR}
+EnvironmentFile=/etc/cloudforge/devenv.env
+ExecStart=/usr/bin/docker compose up -d
+ExecStop=/usr/bin/docker compose down
+TimeoutStartSec=300
+
+[Install]
+WantedBy=multi-user.target
+UNITEOF
+
+sudo systemctl daemon-reload
+sudo systemctl enable cloudforge-devenv
+echo "    Service installed and enabled — will auto-start on next boot."
+
 # ── Done ─────────────────────────────────────────────────────────────────────
 
 echo ""
 echo "Setup complete!"
 echo ""
-echo "IMPORTANT: Log out and back in so your user is in the 'docker' group."
-echo ""
-echo "Then copy your .env file and start the dev environment:"
-echo "  cp .env.example .env && vi .env   # add your ANTHROPIC_API_KEY"
-echo "  bash start-dev.sh"
+echo "Next steps:"
+echo "  1. Log out and back in so your user is in the 'docker' group."
+echo "  2. Edit the runtime config:  sudo -e /etc/cloudforge/devenv.env"
+echo "  3. Start the dev environment: bash start-dev.sh"

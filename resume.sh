@@ -19,7 +19,7 @@ if [ ! -f .cloudforge-state ]; then
 fi
 
 source .cloudforge-state
-echo "==> Resuming cloudforge (suspended at $SUSPENDED_AT)"
+echo "==> Resuming cloudforge-${ENV_NAME} (suspended at $SUSPENDED_AT)"
 
 # ── Start instance ─────────────────────────────────────────────────────────────
 
@@ -44,16 +44,16 @@ echo "    Running. IP: $PUBLIC_IP  AZ: $AZ"
 
 # ── Find latest snapshot ───────────────────────────────────────────────────────
 
-echo "==> Finding latest cloudforge-data snapshot"
+echo "==> Finding latest cloudforge-${ENV_NAME}-data snapshot"
 LATEST_SNAPSHOT=$(aws ec2 describe-snapshots \
     --region "$REGION" \
-    --filters "Name=tag:Name,Values=cloudforge-data" \
+    --filters "Name=tag:Name,Values=cloudforge-${ENV_NAME}-data" \
               "Name=status,Values=completed" \
     --query "sort_by(Snapshots, &StartTime)[-1].SnapshotId" \
     --output text)
 
 [ "$LATEST_SNAPSHOT" = "None" ] || [ -z "$LATEST_SNAPSHOT" ] && {
-    echo "ERROR: No completed cloudforge-data snapshot found."
+    echo "ERROR: No completed cloudforge-${ENV_NAME}-data snapshot found."
     exit 1
 }
 echo "    Snapshot: $LATEST_SNAPSHOT"
@@ -67,7 +67,7 @@ VOLUME_ID=$(aws ec2 create-volume \
     --snapshot-id "$LATEST_SNAPSHOT" \
     --volume-type gp3 \
     --tag-specifications \
-        'ResourceType=volume,Tags=[{Key=Name,Value=cloudforge-data},{Key=Project,Value=cloudforge}]' \
+        "ResourceType=volume,Tags=[{Key=Name,Value=cloudforge-${ENV_NAME}-data},{Key=Environment,Value=${ENV_NAME}},{Key=Project,Value=cloudforge}]" \
     --query "VolumeId" \
     --output text)
 echo "    Volume: $VOLUME_ID"

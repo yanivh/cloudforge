@@ -6,6 +6,11 @@ terraform {
       version = "~> 5.0"
     }
   }
+
+  # Partial backend config — supply the rest via:
+  #   terraform init -backend-config=backend.tfvars
+  # See backend.tfvars.example for the required keys.
+  backend "s3" {}
 }
 
 provider "aws" {
@@ -67,7 +72,8 @@ resource "aws_instance" "devenv" {
   }
 
   tags = {
-    Name        = "cloudforge-devenv"
+    Name        = "cloudforge-${var.env_name}"
+    Environment = var.env_name
     SpotEnabled = var.use_spot ? "true" : "false"
   }
 }
@@ -79,7 +85,8 @@ resource "aws_ebs_volume" "data" {
   type              = "gp3"
 
   tags = {
-    Name = "cloudforge-data"
+    Name        = "cloudforge-${var.env_name}-data"
+    Environment = var.env_name
   }
 }
 
