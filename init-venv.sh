@@ -1,30 +1,54 @@
 #!/bin/bash
 # Idempotent. Creates the default Python venv at /root/.venv (→ /data/home/.venv on EBS),
-# installs PyTorch + base ML packages, and sets up .bashrc auto-activation.
-# Runs INSIDE the container — called from start-dev.sh on first start.
+# installs PyTorch, Detectron2 0.6, and ML packages from requirements-ml.txt.
+# Runs INSIDE the container — called from start-dev.sh.
 set -euo pipefail
 
+USE_GPU="${USE_GPU:-false}"
 VENV_DIR="/root/.venv"
+PIP="$VENV_DIR/bin/pip"
+PYTHON="$VENV_DIR/bin/python"
+CLOUDFORGE_DIR="${CLOUDFORGE_DIR:-/opt/cloudforge}"
+REQUIREMENTS_ML="${CLOUDFORGE_DIR}/requirements-ml.txt"
 
-if [ -d "$VENV_DIR" ] && [ -f "$VENV_DIR/bin/activate" ]; then
-    echo "==> Default venv already exists at $VENV_DIR — skipping"
-    exit 0
+TORCH_VERSION="2.5.1"
+TORCHVISION_VERSION="0.20.1"
+DETECTRON2_REF="git+https://github.com/facebookresearch/detectron2.git@v0.6"
+
+if [ ! -d "$VENV_DIR" ] || [ ! -f "$VENV_DIR/bin/activate" ]; then
+    echo "==> Creating default Python venv at $VENV_DIR"
+    python3.11 -m venv "$VENV_DIR"
 fi
 
-echo "==> Creating default Python venv at $VENV_DIR"
-python3.11 -m venv "$VENV_DIR"
-
 echo "==> Upgrading pip"
-"$VENV_DIR/bin/pip" install --no-cache-dir --upgrade pip
+"$PIP" install --no-cache-dir --upgrade pip setuptools wheel
 
-echo "==> Installing PyTorch 2.1 + CUDA 11.8 (this may take several minutes)"
-"$VENV_DIR/bin/pip" install --no-cache-dir \
-    torch==2.1.0 torchvision==0.16.0 torchaudio==2.1.0 \
-    --index-url https://download.pytorch.org/whl/cu118
+if [ "$USE_GPU" = "true" ]; then
+    echo "==> Installing PyTorch ${TORCH_VERSION} + torchvision ${TORCHVISION_VERSION} (CUDA 12.1)"
+    "$PIP" install --no-cache-dir \
+        "torch==${TORCH_VERSION}" "torchvision==${TORCHVISION_VERSION}" \
+        --index-url https://download.pytorch.org/whl/cu121
+else
+    echo "==> Installing PyTorch ${TORCH_VERSION} + torchvision ${TORCHVISION_VERSION} (CPU)"
+    "$PIP" install --no-cache-dir \
+        "torch==${TORCH_VERSION}" "torchvision==${TORCHVISION_VERSION}" \
+        --index-url https://download.pytorch.org/whl/cpu
+fi
 
-echo "==> Installing base ML tools"
-"$VENV_DIR/bin/pip" install --no-cache-dir \
-    numpy pandas matplotlib ipython jupyter
+if [ ! -f "$REQUIREMENTS_ML" ]; then
+    echo "ERROR: $REQUIREMENTS_ML not found."
+    echo "       Ensure the cloudforge repo is mounted at /opt/cloudforge (docker-compose volume)."
+    exit 1
+fi
+echo "==> Installing ML packages from requirements-ml.txt"
+"$PIP" install --no-cache-dir -r "$REQUIREMENTS_ML"
+
+if ! "$PYTHON" -c "import detectron2" 2>/dev/null; then
+    echo "==> Installing Detectron2 0.6 (build from source; may take several minutes)"
+    "$PIP" install --no-cache-dir --no-build-isolation "${DETECTRON2_REF}"
+else
+    echo "==> Detectron2 already installed — skipping"
+fi
 
 # ── .bashrc auto-activation ───────────────────────────────────────────────────
 
@@ -41,5 +65,9 @@ fi
 
 echo ""
 echo "Default venv ready at $VENV_DIR"
-echo "  Activate manually:  source ~/.venv/bin/activate"
-echo "  Or open a new shell — .bashrc activates it automatically"
+"$PYTHON" -c "import torch; print(f'  PyTorch {torch.__version__} (CUDA available: {torch.cuda.is_available()})')"
+"$PYTHON" -c "import detectron2; print(f'  Detectron2 {detectron2.__version__}')"
+"$PYTHON" -c "import cv2, rasterio; print(f'  OpenCV {cv2.__version__}, rasterio {rasterio.__version__}')"
+echo ""
+echo "For project web venvs (FastAPI, etc.), keep ML deps in this parent venv and link:"
+echo "  bash ${CLOUDFORGE_DIR}/scripts/link-shared-ml-venv.sh /data/projects/<repo>/00_GUI/.venv"

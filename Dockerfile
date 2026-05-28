@@ -7,7 +7,8 @@ ENV PATH="/usr/local/bin:$PATH"
 # Base system packages + deadsnakes PPA for Python 3.11
 RUN apt-get update && apt-get install -y \
     software-properties-common \
-    curl wget git vim build-essential \
+    curl wget git vim build-essential cmake ninja-build \
+    gdal-bin libgdal-dev \
     openssh-client ca-certificates \
     && add-apt-repository ppa:deadsnakes/ppa \
     && apt-get update \

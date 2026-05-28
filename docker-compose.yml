@@ -8,6 +8,7 @@ services:
       # Leave unset to use Claude.ai subscription login instead (claude login).
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
     volumes:
+      - .:/opt/cloudforge:ro
       - /data/projects:/data/projects
       - /data/models:/data/models
       - /data/home:/root
