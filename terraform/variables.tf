@@ -1,3 +1,9 @@
+variable "env_name" {
+  description = "Human-readable environment name slug (e.g. 'default', 'alice'). Used in resource names and tags."
+  type        = string
+  default     = "default"
+}
+
 variable "region" {
   description = "AWS region to deploy into"
   type        = string
@@ -21,10 +27,14 @@ variable "data_volume_size" {
   default     = 200
 }
 
-variable "allowed_cidr" {
-  description = "CIDR block allowed SSH and web-app access. Restrict to your IP for better security."
-  type        = string
-  default     = "0.0.0.0/0"
+variable "ssh_allowed_cidrs" {
+  description = "CIDR blocks allowed SSH (port 22) access. Restrict to known operator IPs — never 0.0.0.0/0."
+  type        = list(string)
+}
+
+variable "web_allowed_cidrs" {
+  description = "CIDR blocks allowed web app (port 8080) access. Can be broader than SSH."
+  type        = list(string)
 }
 
 variable "use_spot" {

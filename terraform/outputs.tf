@@ -22,3 +22,8 @@ output "stop_command" {
   description = "AWS CLI command to stop the instance"
   value       = "aws ec2 stop-instances --instance-ids ${aws_instance.devenv.id} --region ${var.region}"
 }
+
+output "env_name" {
+  description = "Environment name slug"
+  value       = var.env_name
+}

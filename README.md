@@ -18,10 +18,10 @@ Your Laptop (just a screen)
                          │   ├── /data/models/       ← model weights
                          │   └── /data/home/         ← configs, dotfiles
                          └── Docker Container
-                             ├── Python 3.11
-                             ├── PyTorch 2.1 + CUDA 11.8
+                             ├── Python 3.11 + pip
                              ├── Claude Code CLI
-                             └── Git
+                             ├── Git
+                             └── /data/home/.venv  ← PyTorch 2.1 + CUDA (persistent)
 ```
 
 ---
@@ -42,18 +42,60 @@ Your Laptop (just a screen)
 
 ### 1. Provision infrastructure with Terraform
 
+**1a. Create the remote state backend (one-time, before `terraform init`)**
+
+Terraform state is stored in S3 with DynamoDB locking. Create these resources once:
+
+```bash
+# Create S3 bucket (choose a globally unique name)
+aws s3api create-bucket --bucket your-tf-state-bucket --region us-east-1
+aws s3api put-bucket-versioning --bucket your-tf-state-bucket \
+    --versioning-configuration Status=Enabled
+
+# Create DynamoDB lock table
+aws dynamodb create-table \
+    --table-name cloudforge-tf-locks \
+    --attribute-definitions AttributeName=LockID,AttributeType=S \
+    --key-schema AttributeName=LockID,KeyType=HASH \
+    --billing-mode PAY_PER_REQUEST \
+    --region us-east-1
+```
+
+**1b. Configure Terraform variables**
+
 ```bash
 cd terraform
 cp terraform.tfvars.example terraform.tfvars
-# Edit terraform.tfvars — set your key_name at minimum
-terraform init
+# Edit terraform.tfvars — set at minimum:
+#   key_name          — your EC2 key pair name
+#   ssh_allowed_cidrs — your operator IP(s), e.g. ["1.2.3.4/32"]
+#   web_allowed_cidrs — IPs allowed to reach port 8080, e.g. ["0.0.0.0/0"]
+```
+
+Key variables in `terraform.tfvars`:
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `env_name` | Environment slug — used in resource names and tags | `"default"` |
+| `key_name` | EC2 key pair name (without `.pem`) | — |
+| `ssh_allowed_cidrs` | CIDR list for SSH access (restrict to operator IPs) | — |
+| `web_allowed_cidrs` | CIDR list for web app port 8080 | — |
+| `instance_type` | EC2 instance type | `"g4dn.xlarge"` |
+| `use_spot` | Use spot pricing (~70% cheaper) | `true` |
+
+**1c. Initialize and apply**
+
+```bash
+cp backend.tfvars.example backend.tfvars
+# Edit backend.tfvars — set bucket name, region, and optionally the state key
+terraform init -backend-config=backend.tfvars
 terraform apply
 ```
 
 Terraform creates:
 - A `g4dn.xlarge` EC2 instance (NVIDIA T4 GPU)
 - A 200 GB `gp3` EBS data volume attached at `/dev/xvdf`
-- A security group allowing SSH (22) and web app (8080) access
+- A security group with separate SSH and web-app ingress rules
 
 Note the outputs — you'll need `public_ip` and `ssh_command`.
 
@@ -74,23 +116,34 @@ cd cloudforge
 bash setup.sh
 ```
 
-`setup.sh` installs Docker, the NVIDIA Container Toolkit, formats and mounts the EBS volume at `/data`, and creates the `/data/projects`, `/data/models`, `/data/home` directories.
+`setup.sh` does the following:
+- Installs Docker and the NVIDIA Container Toolkit
+- Formats and mounts the EBS volume at `/data`; creates `/data/projects`, `/data/models`, `/data/home`
+- Creates `/etc/cloudforge/` and bootstraps `/etc/cloudforge/devenv.env` from the example template
+- Installs and enables `cloudforge-devenv.service` — a systemd unit that auto-starts the container on boot
 
 **Log out and back in** after setup so your user is in the `docker` group.
 
 ### 4. Configure your environment
 
+`setup.sh` created `/etc/cloudforge/devenv.env` from the example template. Edit it now:
+
 ```bash
-cp .env.example .env
+sudo -e /etc/cloudforge/devenv.env
 ```
 
-Edit `.env` and fill in all three values:
+Set the required values:
 
+```bash
+ENV_NAME=default              # environment slug — matches your terraform env_name
+GIT_NAME=Your Name            # your full name for git commits
+GIT_EMAIL=you@example.com     # your email for git commits
+
+# Optional — leave empty to use 'claude login' (Claude.ai subscription)
+ANTHROPIC_API_KEY=sk-ant-...
 ```
-ANTHROPIC_API_KEY=sk-ant-...   # from console.anthropic.com
-GIT_NAME=Your Name
-GIT_EMAIL=you@example.com
-```
+
+`start-dev.sh` reads this file as its primary config source. It validates that `GIT_NAME` and `GIT_EMAIL` are set and not still placeholders — startup will fail fast if they are.
 
 ### 5. Start the dev environment
 
@@ -98,11 +151,11 @@ GIT_EMAIL=you@example.com
 bash start-dev.sh
 ```
 
-This builds the Docker image and starts the container. First build takes ~5–10 minutes (PyTorch download).
+This builds the Docker image and starts the container. On **first run** it also creates the default Python venv at `/data/home/.venv` and installs PyTorch + CUDA — this takes ~5–10 minutes. On every subsequent start the venv already exists on EBS and is skipped instantly.
 
 ### 6. Connect GitHub (automated)
 
-`start-dev.sh` automatically runs `git-setup.sh` on every start. On the **first run** it will:
+`start-dev.sh` runs `git-setup.sh` only when the git identity inside the container is missing or doesn't match the config. On the **first run** it will:
 
 1. Generate an SSH key (`ed25519`) inside the container using your `GIT_EMAIL`
 2. Configure your git identity (`user.name` / `user.email`) globally
@@ -118,7 +171,7 @@ This builds the Docker image and starts the container. First build takes ~5–10
 ssh-ed25519 AAAA... you@example.com
 ```
 
-On every subsequent start it detects the key already exists and skips generation — you only paste into GitHub once. The key lives at `/data/home/.ssh/` on the EBS volume, so it survives container rebuilds and instance stop/start cycles.
+On every subsequent start it detects the key and identity already match and skips setup entirely — you only paste into GitHub once. The key lives at `/data/home/.ssh/` on the EBS volume, so it survives container rebuilds and instance stop/start cycles.
 
 To run the git setup independently at any time:
 
@@ -324,11 +377,11 @@ Claude reads the diff and crafts a descriptive commit message.
 
 ### Authentication
 
-Two options — pick one in `.env`:
+Two options — pick one in `/etc/cloudforge/devenv.env`:
 
 **Option A — Claude.ai subscription (Pro/Max)**
 
-Leave `ANTHROPIC_API_KEY` unset. On first start, open a terminal inside the container and run:
+Leave `ANTHROPIC_API_KEY` empty. On first start, open a terminal inside the container and run:
 
 ```bash
 claude
@@ -354,7 +407,56 @@ Once you log in on your laptop, the server detects the completed auth and saves 
 
 **Option B — Anthropic API key (pay-per-token)**
 
-Set `ANTHROPIC_API_KEY=sk-ant-...` in `.env`. The key is injected into the container automatically via `docker-compose.yml` — no manual steps needed.
+Set `ANTHROPIC_API_KEY=sk-ant-...` in `/etc/cloudforge/devenv.env`. The key is injected into the container automatically via `docker-compose.yml` — no manual steps needed.
+
+---
+
+## Python Environment
+
+PyTorch and ML packages live in a persistent venv on EBS — not in the container image. This means:
+- Container rebuilds are fast (no multi-GB PyTorch layer)
+- Installed packages survive rebuilds, instance stop/start, and instance type changes
+- The venv is created once by `start-dev.sh` on first run
+
+### Default venv — pre-installed packages
+
+| Package | Version |
+|---------|---------|
+| PyTorch + CUDA 11.8 | 2.1.0 |
+| torchvision | 0.16.0 |
+| numpy, pandas, matplotlib | latest |
+| ipython, jupyter | latest |
+
+The default venv auto-activates in every interactive shell (configured in `/data/home/.bashrc`).
+
+### Per-project venvs
+
+For project-specific dependencies, create a venv inside the project directory:
+
+```bash
+cd /data/projects/myapp
+
+# Create a project venv
+python -m venv .venv
+source .venv/bin/activate
+
+# Install project dependencies
+pip install -r requirements.txt
+```
+
+The project venv at `/data/projects/myapp/.venv` lives on EBS and persists across container rebuilds.
+
+### Installing packages
+
+```bash
+# Into the default venv (active by default in new shells)
+pip install transformers
+
+# Verify GPU works
+python -c "import torch; print(torch.cuda.is_available(), torch.cuda.get_device_name(0))"
+```
+
+Expected output: `True  Tesla T4`
 
 ---
 
@@ -366,7 +468,7 @@ nvidia-smi
 
 # Inside the container
 docker exec -it devenv nvidia-smi
-docker exec -it devenv python -c "import torch; print(torch.cuda.is_available(), torch.cuda.get_device_name(0))"
+docker exec -it devenv bash -c "source ~/.venv/bin/activate && python -c \"import torch; print(torch.cuda.is_available(), torch.cuda.get_device_name(0))\""
 ```
 
 Expected output: `True  Tesla T4`
@@ -507,6 +609,26 @@ EBS is charged even when the instance is stopped.
 | **Total** | **~$37/month** |
 
 vs ~$82/month on-demand for the same usage.
+
+---
+
+## Service Auto-Recovery
+
+`setup.sh` installs `cloudforge-devenv.service`, a systemd unit that starts the Docker container automatically on every host boot — including after a spot interruption auto-restart.
+
+```bash
+# Check service status
+systemctl status cloudforge-devenv
+
+# View startup logs
+journalctl -u cloudforge-devenv -n 50
+
+# Start / stop manually
+sudo systemctl start cloudforge-devenv
+sudo systemctl stop cloudforge-devenv
+```
+
+The service reads `/etc/cloudforge/devenv.env` as its environment file. If that file is missing or contains placeholder values, the service will fail to start — this is intentional (fail fast rather than start in a broken state).
 
 ---
 

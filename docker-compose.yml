@@ -1,7 +1,7 @@
 services:
   devenv:
     build: .
-    container_name: devenv
+    container_name: ${ENV_NAME:-devenv}
     restart: unless-stopped
     environment:
       # Optional — only needed if using an Anthropic API key.
@@ -16,10 +16,3 @@ services:
     stdin_open: true
     tty: true
     command: sleep infinity
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: all
-              capabilities: [gpu]

@@ -12,36 +12,42 @@ cd "$(dirname "$0")"
 
 # ── Config ─────────────────────────────────────────────────────────────────────
 
-# Region: reads from .env if set, otherwise falls back to AWS CLI default region
-set -a; [ -f .env ] && source .env; set +a
-REGION=${AWS_REGION:-$(aws configure get region 2>/dev/null || echo "us-east-1")}
+# Reads ENV_NAME and AWS_REGION from canonical config or local .env
+if [ -f /etc/cloudforge/devenv.env ]; then
+    set -a; source /etc/cloudforge/devenv.env; set +a
+elif [ -f .env ]; then
+    set -a; source .env; set +a
+fi
+
+ENV_NAME="${ENV_NAME:-default}"
+REGION="${AWS_REGION:-$(aws configure get region 2>/dev/null || echo "us-east-1")}"
 
 # ── Find resources by tag ──────────────────────────────────────────────────────
 
-echo "==> Finding cloudforge resources in $REGION"
+echo "==> Finding cloudforge-${ENV_NAME} resources in $REGION"
 
 INSTANCE_ID=$(aws ec2 describe-instances \
     --region "$REGION" \
-    --filters "Name=tag:Name,Values=cloudforge-devenv" \
+    --filters "Name=tag:Name,Values=cloudforge-${ENV_NAME}" \
               "Name=instance-state-name,Values=running,stopped" \
     --query "Reservations[0].Instances[0].InstanceId" \
     --output text)
 
 [ "$INSTANCE_ID" = "None" ] || [ -z "$INSTANCE_ID" ] && {
-    echo "ERROR: No cloudforge instance found."
+    echo "ERROR: No cloudforge-${ENV_NAME} instance found."
     exit 1
 }
 echo "    Instance: $INSTANCE_ID"
 
 VOLUME_ID=$(aws ec2 describe-volumes \
     --region "$REGION" \
-    --filters "Name=tag:Name,Values=cloudforge-data" \
+    --filters "Name=tag:Name,Values=cloudforge-${ENV_NAME}-data" \
               "Name=status,Values=available,in-use" \
     --query "Volumes[0].VolumeId" \
     --output text)
 
 [ "$VOLUME_ID" = "None" ] || [ -z "$VOLUME_ID" ] && {
-    echo "ERROR: No cloudforge-data volume found."
+    echo "ERROR: No cloudforge-${ENV_NAME}-data volume found."
     exit 1
 }
 echo "    Volume:   $VOLUME_ID"
@@ -70,9 +76,9 @@ echo "==> Creating EBS snapshot"
 SNAPSHOT_ID=$(aws ec2 create-snapshot \
     --region "$REGION" \
     --volume-id "$VOLUME_ID" \
-    --description "cloudforge-suspend-$(date +%Y%m%d-%H%M%S)" \
+    --description "cloudforge-${ENV_NAME}-suspend-$(date +%Y%m%d-%H%M%S)" \
     --tag-specifications \
-        'ResourceType=snapshot,Tags=[{Key=Name,Value=cloudforge-data},{Key=Project,Value=cloudforge}]' \
+        "ResourceType=snapshot,Tags=[{Key=Name,Value=cloudforge-${ENV_NAME}-data},{Key=Environment,Value=${ENV_NAME}},{Key=Project,Value=cloudforge}]" \
     --query "SnapshotId" \
     --output text)
 echo "    Snapshot $SNAPSHOT_ID started."
@@ -104,6 +110,7 @@ echo "    Volume deleted."
 # ── Save state for resume ──────────────────────────────────────────────────────
 
 cat > .cloudforge-state << EOF
+ENV_NAME=$ENV_NAME
 INSTANCE_ID=$INSTANCE_ID
 SNAPSHOT_ID=$SNAPSHOT_ID
 REGION=$REGION

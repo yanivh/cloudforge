@@ -22,18 +22,15 @@ RUN update-alternatives --install /usr/bin/python python /usr/bin/python3.11 1 \
 # pip
 RUN curl -sS https://bootstrap.pypa.io/get-pip.py | python3.11
 
-# PyTorch 2.1 with CUDA 11.8
-RUN pip install --no-cache-dir \
-    torch==2.1.0 torchvision==0.16.0 torchaudio==2.1.0 \
-    --index-url https://download.pytorch.org/whl/cu118
-
 # Node.js 20 (required by Claude Code)
 RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
     && apt-get install -y nodejs \
     && rm -rf /var/lib/apt/lists/*
 
-# Claude Code CLI
-RUN npm install -g @anthropic-ai/claude-code
+# Claude Code CLI — pin to a specific version for reproducibility
+# To upgrade: change CLAUDE_CODE_VERSION and rebuild
+ARG CLAUDE_CODE_VERSION=1
+RUN npm install -g @anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}
 
 WORKDIR /data/projects
 
