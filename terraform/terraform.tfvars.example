@@ -1,0 +1,6 @@
+region           = "us-east-1"
+instance_type    = "g4dn.xlarge"
+key_name         = "my-ec2-key"        # name of your key pair in AWS (without .pem)
+data_volume_size = 200                  # GB
+allowed_cidr     = "0.0.0.0/0"         # restrict to your IP for better security, e.g. "1.2.3.4/32"
+use_spot         = true                 # ~70% cheaper; set false for on-demand if you need guaranteed uptime

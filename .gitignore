@@ -1,3 +1,7 @@
+# cloudforge local state
+.cloudforge-state
+.env
+
 # Local .terraform directories
 .terraform/
 

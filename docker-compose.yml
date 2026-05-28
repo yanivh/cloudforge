@@ -1,0 +1,25 @@
+services:
+  devenv:
+    build: .
+    container_name: devenv
+    restart: unless-stopped
+    environment:
+      # Optional — only needed if using an Anthropic API key.
+      # Leave unset to use Claude.ai subscription login instead (claude login).
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+    volumes:
+      - /data/projects:/data/projects
+      - /data/models:/data/models
+      - /data/home:/root
+    ports:
+      - "8080:8080"
+    stdin_open: true
+    tty: true
+    command: sleep infinity
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
