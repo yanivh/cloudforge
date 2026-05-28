@@ -6,7 +6,8 @@
 #
 # torch, torchvision, and detectron2 are installed by init-venv.sh (pinned versions).
 
-opencv-python>=4.13
+# Headless build — no libGL.so.1 required in Docker/server environments
+opencv-python-headless>=4.13
 rasterio>=1.3
 Pillow>=10.0
 shapely>=2.0

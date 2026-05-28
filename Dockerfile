@@ -8,7 +8,7 @@ ENV PATH="/usr/local/bin:$PATH"
 RUN apt-get update && apt-get install -y \
     software-properties-common \
     curl wget git vim build-essential cmake ninja-build \
-    gdal-bin libgdal-dev \
+    gdal-bin libgdal-dev libgl1 libglib2.0-0 \
     openssh-client ca-certificates \
     && add-apt-repository ppa:deadsnakes/ppa \
     && apt-get update \
