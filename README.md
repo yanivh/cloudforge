@@ -198,10 +198,13 @@ aws ec2 start-instances --instance-ids <instance-id>
 bash ~/cloudforge/start-dev.sh
 
 # 4. Attach VS Code directly into the container:
-#    F1 → "Dev Containers: Attach to Running Container" → devenv
+#    Cmd+Shift+P → "Dev Containers: Attach to Running Container" → default
+#    (container name matches ENV_NAME in /etc/cloudforge/devenv.env)
+
+# 5. Open your project — see "VS Code Setup" → "Open your project folder"
 ```
 
-You now have a full VS Code window running **inside the container** on EC2. Open any folder under `/data/projects/`.
+You now have a full VS Code window running **inside the container** on EC2. Open your repo under `/data/projects/<repo>` (not `~/cloudforge` on the host).
 
 ### During the day (all inside the container via VS Code terminal)
 
@@ -218,8 +221,8 @@ Web apps are accessible at `http://localhost:8080` — VS Code tunnels the port 
 ### Evening: shut down
 
 ```bash
-aws ec2 stop-instances --instance-ids <instance-id>
-# All files on /data (EBS) are safe ✓
+bash stop.sh
+# All files on /data (EBS) are safe ✓ — updates ~/.ssh/config on next start.sh
 ```
 
 ---
@@ -245,9 +248,37 @@ A new VS Code window opens — its terminal is on the EC2 host. Run `start-dev.s
 
 ### 3. Attach into the container
 
-`F1` → `Dev Containers: Attach to Running Container` → `devenv`
+`Cmd+Shift+P` → `Dev Containers: Attach to Running Container` → `default` (or your `ENV_NAME`)
 
 Another VS Code window opens — this one is running **inside the container**. This is where you work. Claude Code, Python, Git — all run here, on the GPU server. Your laptop only renders the UI.
+
+Install the **Python** extension (Microsoft) in this Dev Container window if prompted — it is required for automatic venv activation in the terminal.
+
+### 4. Open your project folder (Dev Container window)
+
+Do **not** open `~/cloudforge` on the host — open your repo under `/data/projects`:
+
+1. **File → Open Folder…**
+2. Path: `/data/projects/CityBlues-BGI` (or your repo name)
+3. **`Cmd+Shift+P`** (macOS) → **Python: Select Interpreter** → pick **`./.venv/bin/python`**
+4. **Terminal → New Terminal** — you should see `(.venv)` and cwd `/data/projects/CityBlues-BGI`
+
+If the terminal has no `(.venv)` prefix:
+
+```bash
+cd /data/projects/CityBlues-BGI
+source .venv/bin/activate
+```
+
+**Note:** `(.venv)` on a bare container shell (without opening the project folder) is the **parent** ML venv at `/root/.venv`, not the project venv.
+
+Set up a project venv once on the server:
+
+```bash
+bash /opt/cloudforge/scripts/install-project-venv.sh /data/projects/CityBlues-BGI
+```
+
+That script links parent ML packages (torch, detectron2, …), installs web/app deps from `requirements.txt` (skipping ML lines), and writes `.vscode/settings.json` for interpreter auto-selection.
 
 ```
 Your Laptop                          EC2 Container
@@ -259,7 +290,7 @@ VS Code UI (just a window) ────────► VS Code Server
                                      /data/projects/    ← files live here
 ```
 
-### 4. Port forwarding
+### 5. Port forwarding
 
 Open the **Ports** panel in VS Code and forward port `8080`. Your web app is then accessible at `http://localhost:8080` in your laptop browser.
 
@@ -564,10 +595,10 @@ Takes ~3-5 minutes.
 
 | Scenario | Use | Command |
 |----------|-----|---------|
-| End of day | Stop instance | `aws ec2 stop-instances --instance-ids <id>` |
-| Coming back same day | Start instance | `aws ec2 start-instances --instance-ids <id>` |
-| Long break (days/weeks) | Suspend | `bash suspend.sh` |
-| Returning from break | Resume | `bash resume.sh` |
+| End of day | Stop instance | `bash stop.sh` |
+| Coming back same day | Start instance (+ SSH config) | `bash start.sh` |
+| Long break (days/weeks) | Suspend | `bash stop.sh --suspend` or `bash suspend.sh` |
+| Returning from break | Resume (+ SSH config) | `bash start.sh` or `bash resume.sh` |
 
 ---
 

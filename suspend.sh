@@ -8,19 +8,10 @@
 # Restore with: bash resume.sh
 set -euo pipefail
 
-cd "$(dirname "$0")"
-
-# ── Config ─────────────────────────────────────────────────────────────────────
-
-# Reads ENV_NAME and AWS_REGION from canonical config or local .env
-if [ -f /etc/cloudforge/devenv.env ]; then
-    set -a; source /etc/cloudforge/devenv.env; set +a
-elif [ -f .env ]; then
-    set -a; source .env; set +a
-fi
-
-ENV_NAME="${ENV_NAME:-default}"
-REGION="${AWS_REGION:-$(aws configure get region 2>/dev/null || echo "us-east-1")}"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+# shellcheck source=scripts/lib/cloudforge.sh
+source "${SCRIPT_DIR}/scripts/lib/cloudforge.sh"
+cloudforge_load_config
 
 # ── Find resources by tag ──────────────────────────────────────────────────────
 
@@ -55,20 +46,7 @@ echo "    Volume:   $VOLUME_ID"
 # ── Stop Docker container (best-effort) ────────────────────────────────────────
 
 echo "==> Stopping Docker container"
-PUBLIC_IP=$(aws ec2 describe-instances \
-    --region "$REGION" \
-    --instance-ids "$INSTANCE_ID" \
-    --query "Reservations[0].Instances[0].PublicIpAddress" \
-    --output text)
-
-if [ "$PUBLIC_IP" != "None" ] && [ -n "$PUBLIC_IP" ]; then
-    ssh -o StrictHostKeyChecking=no -o ConnectTimeout=5 ubuntu@"$PUBLIC_IP" \
-        "cd ~/cloudforge && docker compose down 2>/dev/null || true" 2>/dev/null \
-        && echo "    Container stopped." \
-        || echo "    (could not reach instance — skipping)"
-else
-    echo "    (instance already stopped — skipping)"
-fi
+cloudforge_stop_container_best_effort "$INSTANCE_ID"
 
 # ── Snapshot ───────────────────────────────────────────────────────────────────
 
@@ -127,4 +105,4 @@ echo "  Snapshot (~\$1-3/month depending on data size)"
 echo "  Stopped instance root volume, 30 GB (~\$2.40/month)"
 echo "  Total: ~\$3-5/month"
 echo ""
-echo "To restore: bash resume.sh"
+echo "To restore: bash start.sh   # or: bash resume.sh"

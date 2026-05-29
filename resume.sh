@@ -8,7 +8,10 @@
 # Run suspend.sh first to create the snapshot and state file.
 set -euo pipefail
 
-cd "$(dirname "$0")"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+# shellcheck source=scripts/lib/cloudforge.sh
+source "${SCRIPT_DIR}/scripts/lib/cloudforge.sh"
+cloudforge_load_config
 
 # ── Load state ─────────────────────────────────────────────────────────────────
 
@@ -87,10 +90,10 @@ echo "    Attached."
 # ── Mount on instance ──────────────────────────────────────────────────────────
 
 echo "==> Mounting /data on instance"
-ssh -o StrictHostKeyChecking=no -o ConnectTimeout=15 ubuntu@"$PUBLIC_IP" \
-    "sudo mount -a" 2>/dev/null \
-    && echo "    Mounted." \
-    || echo "    (mount -a failed — will auto-mount on next SSH login via /etc/fstab)"
+cloudforge_mount_data_best_effort "$PUBLIC_IP"
+
+echo "==> Updating SSH config"
+cloudforge_update_ssh_config "$PUBLIC_IP"
 
 # ── Clean up state file ────────────────────────────────────────────────────────
 
@@ -101,12 +104,7 @@ rm .cloudforge-state
 echo ""
 echo "Resumed successfully."
 echo ""
-echo "Public IP: $PUBLIC_IP"
-echo ""
-echo "If the IP changed, update ~/.ssh/config on your laptop:"
-echo "  Host cloudforge"
-echo "      HostName $PUBLIC_IP"
-echo ""
-echo "Then connect and start:"
-echo "  ssh cloudforge"
+echo "  ssh ${SSH_HOST}"
 echo "  bash ~/cloudforge/start-dev.sh"
+echo ""
+echo "VS Code: Remote-SSH → Connect to Host → ${SSH_HOST}"

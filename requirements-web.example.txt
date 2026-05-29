@@ -1,0 +1,21 @@
+# Example web/app requirements for a project child venv.
+# Copy to your repo as requirements-web.txt (or keep a single requirements.txt
+# and use install-project-venv.sh to skip ML lines automatically).
+#
+# Do NOT list torch, torchvision, detectron2, opencv, or rasterio here —
+# those come from the cloudforge parent venv via _shared_ml.pth.
+
+fastapi>=0.136
+uvicorn[standard]>=0.46
+sqlalchemy>=2.0
+jinja2>=3.1
+python-multipart>=0.0.28
+pydantic-settings>=2.14
+rio-tiler>=6.6,<8
+qrcode>=7.0
+bcrypt>=4.0
+itsdangerous>=2.1
+duckdb>=1.0
+duckdb-engine>=0.13
+Pillow>=10.0
+shapely>=2.0

@@ -149,15 +149,23 @@ python -c "import torch, detectron2, cv2, rasterio; print(torch.__version__, det
 ### Parent vs project venv (ML vs web stack)
 
 - **Parent venv** (`/data/home/.venv`): torch 2.5.1, torchvision 0.20.1, detectron2 0.6, opencv, rasterio, etc. (installed by `init-venv.sh`)
-- **Project venv** (e.g. `00_GUI/.venv`): FastAPI, uvicorn, SQLAlchemy, rio-tiler, etc. — do **not** duplicate ML deps there
+- **Project venv** (e.g. `/data/projects/CityBlues-BGI/.venv`): FastAPI, uvicorn, SQLAlchemy, rio-tiler, etc.
+- **Do not** `pip install detectron2==0.6` in the project venv — it is not on PyPI; use the parent venv via `_shared_ml.pth`
 
-Link parent ML packages into a project venv:
+Install a project venv (one command — skips ML lines in `requirements.txt` automatically):
 
 ```bash
-cd ~/cloudforge
-bash scripts/link-shared-ml-venv.sh /data/projects/<repo>/00_GUI/.venv
-pip install -r /data/projects/<repo>/00_GUI/requirements.txt
+bash /opt/cloudforge/scripts/install-project-venv.sh /data/projects/CityBlues-BGI
 ```
+
+Custom venv path (e.g. `00_GUI/.venv`):
+
+```bash
+VENV_PATH=/data/projects/<repo>/00_GUI/.venv \
+  bash /opt/cloudforge/scripts/install-project-venv.sh /data/projects/<repo>
+```
+
+Optional: split requirements in git using `requirements-web.example.txt` as a template.
 
 If upgrading from an older parent venv (torch 2.1), reset once:
 
@@ -171,13 +179,19 @@ bash start-dev.sh
 Start:
 
 ```bash
-aws ec2 start-instances --instance-ids <instance_id> --region us-east-1
+bash start.sh   # starts EC2 and updates ~/.ssh/config with the public IP
 ```
 
 Stop:
 
 ```bash
-aws ec2 stop-instances --instance-ids <instance_id> --region us-east-1
+bash stop.sh
+```
+
+Long break (minimum cost — snapshot + delete data volume):
+
+```bash
+bash stop.sh --suspend
 ```
 
 ---
@@ -186,9 +200,9 @@ aws ec2 stop-instances --instance-ids <instance_id> --region us-east-1
 
 Use this if the environment is already provisioned and running.
 
-### 1) Add SSH host config on your laptop
+### 1) SSH host config on your laptop
 
-Edit `~/.ssh/config`:
+`bash start.sh` writes a managed block to `~/.ssh/config` (Host `cloudforge` by default). To set it manually instead:
 
 ```sshconfig
 Host cloudforge
@@ -232,9 +246,24 @@ Inside container:
 cd /data/projects
 git clone git@github.com:<owner>/<repo>.git
 cd <repo>
+bash /opt/cloudforge/scripts/install-project-venv.sh "$(pwd)"
+source .venv/bin/activate
 ```
 
-Then open that folder in the remote+container window.
+Then open that folder in the remote+container window:
+
+1. **File → Open Folder** → `/data/projects/<repo>` (not `~/cloudforge` on the host)
+2. Install extension **Python** in the Dev Container window if prompted
+3. **Cmd+Shift+P** → **Python: Select Interpreter** → choose `<repo>/.venv`
+4. Open a **new** terminal — you should see `(.venv)` and cwd `/data/projects/<repo>`
+
+If the terminal shows `root@...` without `(.venv)`, run:
+
+```bash
+source .venv/bin/activate
+```
+
+Note: `(.venv)` on login to the container without opening a project folder is the **parent** ML venv at `/root/.venv`, not the project venv.
 
 ---
 
